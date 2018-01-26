@@ -1,0 +1,455 @@
+---
+title: Plotting with R Base Graphics
+teaching: ?
+exercises: ?
+questions:
+- "How can I visualize my data with R?"
+objectives:
+- survey high-level plotting commands
+- review common options for plotting
+- using subsetting and selection to add information to plots
+- low-level plotting for fine-tuning and clarity
+- interacting with your plots
+- making plots pretty
+- generating output for different purposes
+keypoints:
+- "R plotting links data to display - if it's in your data, we can plot it!"
+- "Plotting isn't special - the code we use for analysis works the same here."
+---
+
+```{r chunk_options, include=FALSE}
+source("bin/chunk-options.R")
+knitr_fig_path("02-")
+setwd("~/teaching/R-ecology-lesson/tyler-pipeline/")
+```
+
+## Basic plotting
+
+We'll start slow, and build our way up. For starters, consider a short vector of
+numbers: 
+
+```{r }
+myvect <- 10:1                          # What does 10:1 do?
+```
+
+```{r Plotting vectors}
+plot(myvect)
+```
+
+R guesses what kind of plot you want based on the class of the object you give
+it:
+
+```{r}
+class(myvect)
+```
+
+By default, the values of one-dimensional vectors are plotted in order, almost
+like time-series.
+
+```{r Plotting data.frames}
+class(women)
+
+plot(women)
+```
+
+2-D `data.frames` and matrices with numerical data are plotted as
+scatter plots by default.
+
+> ## Quick plots:
+>
+> R provides default plots for most types of objects. Try `plot(object)` to see
+> this default. It's probably not something you'd publish, but it's often a
+> useful summary of your data. The `plot` command doesn't change your data, so
+> it's safe to experiment as much as you like.
+
+> ## Challenge:
+>
+> Look at the built-in `iris` data set. Don't plot it yet - first take a look at
+> the data. What class are each of the columns? How would you summarize this?
+> Find out what the default plot looks like!
+
+## Scatterplots
+
+Let's continue with the `iris` data. We've seen the default plot, but now we
+want to take a closer look at `Sepal.Length` and `Sepal.Width`. To get that, we
+need to be more explicit with our instructions:
+
+```{r Iris Sepal Scatterplot}
+plot(x = iris$Sepal.Length, y = iris$Sepal.Width)
+```
+
+Here we've specified which variable is goes on each axis. If we leave that out,
+R will assume the first variable is `x` and the second is `y`.
+
+Because plotting two variables out of a `data.frame` is such a common request, R
+provides some handy short-cuts for doing this:
+
+```{r Scatterplot Shortcuts}
+plot(Sepal.Width ~ Sepal.Length, data = iris)
+```
+
+The tilde symbol, `~`, is what R uses to indicate the formula of a linear model.
+In this case, we're saying "plot `Sepal.Width` **against** `Sepal.Length`". For
+scatterplots, that means the variable before the `tilde` is plotted on the
+y-axis, and the variable after the tilde is plotted on the x-axis. We don't need
+to specify that these are columns of the `iris` data.frame (i.e.,
+`iris$Sepal.Length`), because we use the `data` argument to tell R where to
+look for the formula variables.
+
+The following commands all do the same thing:
+
+```{r Scatterplot Alternatives}
+plot(iris$Sepal.Length, iris$Sepal.Width)
+plot(y = iris$Sepal.Width, x = iris$Sepal.Length)
+plot(iris[, "Sepal.Length"], iris[,"Sepal.Width"])
+plot(iris[, 1:2])
+```
+
+> ## Challenge:
+>
+> The first three variations are just different ways of selecting the same two
+> columns for `x` and `y`. What does the fourth line mean in English?
+
+### Colours, Symbols and Size
+
+Now we have a boring scatterplot to display two of our variables. We can modify
+the colours, symbols, and size of our points with the arguments `col` (for
+colour), `pch` (for plot character), and `cex` (for character expansion). Let's
+start with `pch`.
+
+There are 25 different symbols for plotting in R:
+
+```{r pch}
+plot(1:25, pch = 1:25)
+```
+
+If we set pch to a single value, it will apply to all points in the figure:
+
+```{r one pch}
+plot(Sepal.Width ~ Sepal.Length, data = iris, pch = 19)
+```
+
+That looks better, but it doesn't add any information to the plot. If we use a
+vector of numbers to set `pch`, each point can have a different shape:
+
+```{r many pch}
+plot(Sepal.Width ~ Sepal.Length, data = iris, pch = 1:25)
+```
+
+This plot uses a different symbol for each of the first 25 points, then starts
+over. Again, it doesn't add any value to the plot.
+
+```{r pch by factor}
+plot(Sepal.Width ~ Sepal.Length, data = iris, pch = as.numeric(Species))
+```
+
+Now the symbols mean somthing useful! Note that this uses the first three
+symbols that R knows. If we don't like these, we can do a little selection trick
+to pick our own:
+
+```{r pch pick symbols}
+plot(Sepal.Width ~ Sepal.Length, data = iris,
+     pch = c(19, 24, 4)[as.numeric(Species)])
+```
+
+In addition to the 25 symbols, we can also use any single character:
+
+```{r pch letters}
+plot(Sepal.Width ~ Sepal.Length, data = iris,
+     pch = c("S", "E", "I")[as.numeric(Species)])
+```
+
+> ## Challenge
+>
+> The `col` argument works much the same as `pch`. Find out how many colours are
+> available, and set different colours for each species in our plot.
+
+There are actually many more colours available in R than what you can get using
+numbers. You can also use names, the full list is displayed by the function
+`colors()`.
+
+Another useful tool, particularly when you have large data sets, is
+transparency. This is allows us to see when points are overlapping. The easiest
+way to get transparency is by 'adding' it to existing colors with the function
+`adjustcolor`:
+
+```{r adjustcolor}
+adjustcolor(1:4, alpha.f = 0.3) # 0-1, lower values make fainter points
+adjustcolor(c("red", "green"), alpha.f = 0.3) # works with named colors too!
+```
+
+If you know html colour codes, you can use them directly. For the rest of us,
+`adjustcolors` saves us the hassle:
+
+```{r scatterplot colors}
+plot(Sepal.Width ~ Sepal.Length, data = iris,
+     pch = c(19, 17, 15)[as.numeric(Species)],
+     col = adjustcolor(c("red", "blue", "orange")[as.numeric(Species)], alpha.f = 0.3))
+```
+
+## Real Data
+
+```{r read otus}
+samp1 <- read.table("Sample1.otu", sep = "\t", row.names = 1)
+otus <- samp1[, ncol(samp1)]
+
+samples <- t(samp1[, - ncol(samp1)])
+
+taxTab <- strsplit(as.character(otus), split = ";  ")
+taxTab <- do.call(rbind, taxTab)
+taxTab <- gsub("^.__", "", taxTab)
+colnames(taxTab) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+```
+
+```{r RAM Data}
+library(RAM)
+data(ITS1)
+ITS1otus <- ITS1[, ncol(ITS1)]
+ITS1samples <- t(ITS1[, - ncol(ITS1)])
+ITS1taxTab <- strsplit(as.character(ITS1otus), split = "; ")
+ITS1taxTab <- rbind.fill(lapply(ITS1taxTab, as.data.frame))
+ITS1taxTab <- do.call(function(x) rbind.fill(as.data.frame(x)), ITS1taxTab)
+ITS1taxTab <- gsub("^.__", "", ITS1taxTab)
+colnames(ITS1taxTab) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+
+
+```
+
+## type :: what kind of symbols do you want to plot?
+
+plot(myvect, type = "p")                # the default, points
+plot(myvect, type = "l")                # a connected line
+plot(myvect, type = "b")                # points and a line
+plot(myvect, type = "s")                # steps
+plot(myvect, type = "n")                # no symbols
+
+## the type = "n" option is useful when you want to specify
+## particular details of the symbols yourself.
+
+## Most plot types can also take arguments for main, sub, xlab,
+## and ylab.
+
+plot(myvect, main = "My plot")
+plot(myvect, main = "My plot", xlab = "Order")
+
+## You can probably guess what ylab does. Try sub to find out
+## where it goes.
+
+## Note that each of these four arguments can be set to the empty
+## string to omit the labels from your plot:
+
+plot(myvect, xlab = "", ylab = "")
+
+## You can also turn off all labels by setting the ann (for annotation)
+## argument to false:
+
+plot(myvect, ann = FALSE)
+
+## Other key help pages to refer to:
+?plot.default
+?par
+
+
+############################
+## Axis limits and Aspect ##
+############################
+
+## you can set the range of each axis with xlim and ylim:
+
+smallnums <- seq(-1, 1, length.out = 10)
+bignums <- seq(-10, 10, length.out = 10)
+plot(smallnums, bignums)
+
+plot(smallnums, bignums, xlim = c(-5, 5))
+
+## If you want to use the same scale on both axes, set asp = 1:
+
+plot(smallnums, bignums, asp = 1)
+
+## This is important if the absolute distances between points is
+## meaningful, as in ordination plots!
+
+###########################
+## High-level Plot Types ##
+###########################
+
+hist(iris$Sepal.Length)
+
+boxplot(iris$Sepal.Length)
+boxplot(Sepal.Length ~ Species, data = iris)
+
+stripchart(iris$Sepal.Length)
+stripchart(Sepal.Length ~ Species, data = iris)
+stripchart(Sepal.Length ~ Species, data = iris, method = "jitter")
+stripchart(Sepal.Length ~ Species, data = iris, method = "jitter",
+           vertical = TRUE)
+
+## Dynamite plots?
+
+
+#################################
+## Adding Information to Plots ##
+#################################
+
+plot(Sepal.Length ~ Sepal.Width, data = iris)
+
+#############
+## Symbols ##
+#############
+
+## pch = "plot character"
+
+plot(Sepal.Length ~ Sepal.Width, data = iris, pch = 1) # default
+plot(Sepal.Length ~ Sepal.Width, data = iris, pch = 2) # custom!
+
+## 25 different symbols available:
+plot(1:25, pch = 1:25)
+
+## You can use any ascii characters:
+
+plot(1:26, pch = letters)
+
+## Any numeric vector can be used to set values.
+## Recall that factors are actually numbers with labels!
+
+plot(Sepal.Length ~ Sepal.Width, data = iris, pch = as.numeric(Species))
+
+#############
+## Colours ##
+#############
+
+## col = "symbol colour"
+
+## Eight colours can be selected by number:
+plot(1:10, col = 1:10, pch = 15, cex = 4)
+
+
+## Colours can also be selected by name:
+plot(1:10, col = "red", pch = 15, cex = 4)
+plot(1:10, col = c("blue", "red"), pch = 15, cex = 4)
+
+## Note how the colour vector is recycled!
+
+plot(rep(1:25, 20), rep(1:20, each = 25), pch = 15, cex = 2.5,
+     col = colours(distinct = TRUE))
+
+## colours() returns a list of all the named colours R knows
+
+## other important colour functions:
+##   palette() : change the numbered colours
+##   rainbow(), heat.colors() etc : create interesting palettes
+##   rgb() : create your own colours
+
+## Putting this to work:
+
+plot(Sepal.Length ~ Sepal.Width, data = iris, pch = as.numeric(Species),
+     col = as.numeric(Species))
+
+##########################
+## cex and bubble plots ##
+##########################
+
+## cex controls the size of plot points
+
+library(vegan)
+data(dune)
+data(dune.env)
+dune.rda <- rda(dune)
+dune.sites <- scores(dune.rda, display = "sites")
+plot(dune.sites)
+plot(dune.sites, cex = as.numeric(dune.env$Moisture))
+
+#####################
+## Low-level Plots ##
+#####################
+
+## All of the plots we've used so far have been 'high-level'. This means
+## that they take over the entire plot window - you can't combine them
+## with other plots. You can however add 'low-level' plotting commands
+## to existing high-level plots. The parameters are very similar, so
+## they should work fairly intuitively.
+
+## Start with an empty plot:
+plot(Sepal.Length ~ Sepal.Width, data = iris, type = 'n')
+
+## add points for one versicolor:
+points(Sepal.Length ~ Sepal.Width, data = subset(iris, Species ==
+                                     "versicolor"))
+
+## add points for virginica, setting different options:
+points(Sepal.Length ~ Sepal.Width, data = subset(iris, Species ==
+                                     "virginica"),
+       pch = 5, col = 8)
+
+points(Sepal.Length ~ Sepal.Width, data = subset(iris, Species ==
+                                     "setosa"),
+       pch = 3, col = 5)
+
+## add any number of arbitrary points:
+
+points(x = 4, y = 6.5, pch = "X", cex = 5, col = "turquoise")
+
+## Adding lines:
+
+plot(Wind ~ Temp, data = airquality)
+
+## Calculate the regression
+wind.temp.lm <- lm(Wind ~ Temp, data = airquality)
+
+wind.temp.lm
+summary(wind.temp.lm)
+
+abline(wind.temp.lm, col = "red")
+
+## Adding text
+text(90, 18, "high", cex = 4)
+text(65, 3, "low", cex = 4)
+
+
+## Interactively exploring your data:
+
+plot(Murder ~ Assault, data = USArrests)
+
+identify(USArrests[, c("Assault", "Murder")])
+identify(USArrests[, c("Assault", "Murder")], labels = row.names(USArrests))
+
+plot(Murder ~ Assault, data = USArrests, type = 'n')
+
+text(Murder ~ Assault, data = USArrests, labels = row.names(USArrests))
+
+##############
+## Workflow ##
+##############
+
+## Producing figures with code is a very different process than using a
+## point-and-click program. It is tedious at first, but the benefit in
+## the long-run is being able to reproduce the same plot for multiple
+## datasets or different subsets. The key to this approach is to use
+## your script files to generate your plots - change one thing at a time
+## and re-send the script, don't re-enter data each time you send a plot
+## command! 
+
+
+###############
+## Exercises ##
+###############
+
+## using the airquality data set:
+
+## plot Wind agains Ozone
+plot(Wind ~ Ozone, data = airquality)
+
+## limit your plot to Wind less than 10
+plot(Wind ~ Ozone, subset(airquality, Wind <= 10))
+plot(Wind ~ Ozone, ylim = c(0, 10), airquality)
+
+## scale the size of points to Temp
+plot(Wind ~ Ozone, data = airquality, cex = 3 * scale(Temp))
+
+## modify the previous plot such that the color of the points is
+## different according to the Months variable
+plot(Wind ~ Ozone, data = airquality, cex = 3 * scale(Temp),
+     col = Month)
+
