@@ -1,0 +1,128 @@
+# Setup
+
+This file should be in the top-level directory of the MiSeq output, and we set
+that location as the working directory for R.
+
+```{r setup}
+library(tidyverse)
+getwd()
+```
+
+# Reference
+Refer to the [MiSeq Metagenomics Workflow Reference
+(pdf)](https://support.illumina.com/content/dam/illumina-support/documents/documentation/software_documentation/miseqreporter/miseq-reporter-metagenomics-workflow-reference-guide-15042317-d.pdf)
+for details.
+
+# Quality Checks
+## Raw Reads
+
+The results of sample demultiplexing are stored in the
+`DemultiplexSummaryF1L1.txt`
+(Data/Intensities/BaseCalls/Alignment/DemultiplexSummaryF1L1.txt) file. This
+contains three tables, smooshed together in a way that makes them awkward to
+use. We need to read this into R. We can't use `read_delim` or `read_csv`, so we
+have to scoop the whole file in with `readLines` and do some processing. 
+
+```{r demultiplexsummary}
+DEMULT <- "Data/Intensities/BaseCalls/Alignment/DemultiplexSummaryF1L1.txt"
+rawDM <- readLines(DEMULT)
+```
+
+The first table ends with a blank line, so we need to find that line:
+
+```{r grep}
+blank_row <- grep("^$", rawDM)
+raw1 <- rawDM[1:(blank_row - 1)]
+
+reads <- read.table(skip = 1, sep = "\t", text = raw1, header = TRUE)
+
+reads <- select(reads, -X)
+colnames(reads)[1] <- "tile"
+reads <- as.tibble(reads)
+reads_gathered <- gather(reads, key = sample, value = proportion, -tile)
+reads_gathered$sample <- as.factor(reads_gathered$sample)
+```
+
+Now we can plot our data:
+
+```{r demultiplex plot}
+ggplot(reads_gathered, aes(x = sample, y = proportion)) +
+  geom_boxplot()
+```
+
+```{r PhiX Reads}
+ggplot(reads_gathered %>% filter(sample == "None"), aes(x = proportion)) +
+  geom_histogram()
+```
+
+```{r Sample Reads}
+samples <- reads_gathered %>% filter(sample != "None")
+ggplot(samples, aes(x = reorder(sample, proportion), y = proportion)) +
+  geom_boxplot()
+```
+
+The second table contains the number of reads for each individual index
+sequence. It starts after the line "Index", and ends before the line
+"Index2". We'll pick it out the same way as before:
+
+```{r Table 2}
+index1_row <- grep("^Index$", rawDM)
+index2_row <- grep("^Index2$", rawDM)
+raw2 <- rawDM[(index1_row + 1):(index2_row - 1)]
+index1 <- read.table(text = raw2, sep = "\t", as.is = TRUE)
+colnames(index1) <- c("forward", "reverse", "count")
+index1 <- as.tibble(index1)
+```
+
+There's another file that's useful here. It's called "SampleSheet.csv", and
+contains a list of all the indexes we used in our library prep. Once again, it's
+in a non-standard format, so we have to do some munging:
+
+```{r samplesheet}
+sampleRaw <- readLines("SampleSheet.csv")
+sampleHeader <- grep("^Sample_ID,Sample_Name", sampleRaw)
+sampleRaw1 <- sampleRaw[sampleHeader:(length(sampleRaw))]
+sampleSheet <- read.table(text = sampleRaw1, sep = ",", header = TRUE, as.is = TRUE)
+sampleSheet <- as.tibble(sampleSheet)
+i7 <- sampleSheet %>% select(I7_Index_ID, index) %>%
+  group_by(I7_Index_ID, index) %>%
+  summarize()
+
+i7labels <- i7$I7_Index_ID
+names(i7labels) <- i7$index
+
+index1 <- mutate(index1, name = i7labels[forward])
+index1 <- mutate(index1, known = is.na(index1$name))
+```
+
+```{r plot index1}
+ggplot(index1, aes(x = reorder(forward, count), y = count, color = known)) +
+  geom_point()
+```
+
+
+```{r index2}
+raw3 <- rawDM[(index2_row + 1):length(rawDM)]
+index2 <- read.table(text = raw3, sep = "\t", as.is = TRUE)
+colnames(index2) <- c("forward", "reverse", "count")
+index2 <- as.tibble(index2)
+
+i5 <- sampleSheet %>% select(I5_Index_ID, index2) %>%
+  group_by(I5_Index_ID, index2) %>%
+  summarize()
+
+i5labels <- i5$I5_Index_ID
+names(i5labels) <- i5$index2
+
+index2 <- mutate(index2, name = i5labels[forward])
+index2 <- mutate(index2, known = is.na(name))
+
+ggplot(index2, aes(x = reorder(forward, count), y = count, color = known)) +
+  geom_point()
+
+```
+
+The SampleSheet table contains the index labels for each of our index sequences.
+We can use this to identify the actual index sequences that the MiSeq detected.
+To do this, we need to merge the labels from `sampleSheet` with the read counts
+in `index1`. 

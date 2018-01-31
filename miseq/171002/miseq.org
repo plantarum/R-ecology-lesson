@@ -1,0 +1,632 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args:bash :session *pollen-bash*
+#+PROPERTY: header-args:R :session *pollen-r*
+#+LATEX_HEADER: \usepackage{longtable}
+#+TITLE: 171002 Reanalysis with Index Reads
+
+
+* Setup
+#+BEGIN_SRC bash :exports none :results silent
+  echo bury the start up cruft
+#+END_SRC
+
+#+BEGIN_SRC bash :results verbatim
+  RUN=171002 ## Edit this to the date of the run you are working with
+  ISILON=/isilon/biodiversity/data/raw/illumina/AAFC/  
+  DEMULT=Data/Intensities/BaseCalls/Alignment/DemultiplexSummaryF1L1.txt
+  OUT=ANALYSIS
+  RF='_R1_001.fastq.gz';
+  RR='_R2_001.fastq.gz';
+  RAW='Data/Intensities/BaseCalls/';
+
+  ## get file names, store them in samples.txt:
+  find ./$RAW -name *$RF | xargs -n 1 basename -s $RF > $OUT/samples.txt
+
+
+  if [ ! -d ~/miseq/${RUN} ] ; then 
+      mkdir ~/miseq/$RUN 
+      mkdir ~/miseq/$RUN/$OUT
+  else 
+      echo ~/miseq/$RUN already exists, not creating 
+  fi
+
+  if [ ! -f ~/miseq/$RUN/${RUN}.org ] ; then
+      cp ~/miseq/pipe-template.org ~/miseq/${RUN}/${RUN}.org
+  else
+      echo ~/miseq/$RUN/${RUN}.org already exists, not creating
+  fi
+
+  cd ~/miseq/$RUN
+
+#+END_SRC
+
+#+RESULTS:
+: 
+: /home/smithty/miseq/171002 already exists, not creating
+: /home/smithty/miseq/171002/171002.org already exists, not creating
+
+* Getting the raw data
+MiSeq output is stored on the ~isilon~ server, which you can access from ~biocluster~, using the path ~/isilon/biodiversity/data/raw/illumina/AAFC/~. You can see a list of all data directories using the following code:
+
+#+BEGIN_SRC bash
+  ## List all output directories:
+  rsync biocluster:${ISILON}${RUN}*_Reanalyzed
+#+END_SRC
+
+#+RESULTS:
+|                       |                                                                       |
+| drwxrwxr-x          1 | 180 2017/10/24 06:49:01 171002_M01696_0108_000000000-AYT43_Reanalyzed |
+
+Each MiSeq run has it's own directory, and the first six numbers in the directory name indicate the run date. i.e., if your run started on October 10, 2017, the output will be in a directory named ~171010_...~. 
+
+After you locate the directory with your data, you can transfer it onto Emmet with the following code. If you changed the definition of ~$RUN~ above to the date of your run the following should work as is:
+
+#+BEGIN_SRC bash
+  cd ~/miseq
+  rsync -r biocluster:${ISILON}${RUN}*_Reanalyzed/ ${RUN}/
+  cd $RUN
+#+END_SRC
+
+#+RESULTS:
+
+This will take a few minutes to run.
+
+* Quality Checks
+** Multiplexing
+The [[file:Data/Intensities/BaseCalls/Alignment/DemultiplexSummaryF1L1.txt][DemultiplexSummaryF1L1.txt]] file contains data on how many reads were assigned to each sample, based on the index sequences. The file has two sections. The first is a table showing the proportion of reads assigned to each sample for each tile. There are two tiles in a Nano run, and 38 in a regular run.
+#+BEGIN_SRC bash :results silent
+  dos2unix $DEMULT ## remove Windows-style line endings
+  awk '!NF{exit}1' $DEMULT | tail -n +2 > tiles.txt
+  awk '/Index$/{f=1;next} /Index2/{f=0} f' > index1.txt $DEMULT
+  awk '/Index2$/{f=1;next} f' > index2.txt $DEMULT
+#+END_SRC
+
+#+BEGIN_SRC R :results graphics :file tile.jpg
+  tiles <- read.table("tiles.txt", header = TRUE, row.names = 1)
+  hist(tiles$None, xlab = "Percent", main = NULL)
+#+END_SRC
+
+#+ATTR_LATEX: :width 0.5\textwidth
+#+CAPTION: Undetermined Reads per Tile
+#+RESULTS:
+[[file:tile.jpg]]
+
+#+BEGIN_SRC R :results graphics :file tile-samples.jpg
+  tilesums <- colSums(tiles)
+  boxplot(tiles[, -1][, order(tilesums[-1])])
+#+END_SRC
+
+#+ATTR_LATEX: :width 0.5\textwidth
+#+CAPTION: Proportion of reads per sample
+#+RESULTS:
+[[file:tile-samples.jpg]]
+
+#+BEGIN_SRC R :results graphics :file sample-means.jpg
+  hist(colMeans(tiles[, -1]), main = NULL)
+#+END_SRC
+
+#+ATTR_LATEX: :width 0.5\textwidth
+#+CAPTION: Mean Reads Per Tile Per Sample
+#+RESULTS:
+[[file:sample-means.jpg]]
+
+#+BEGIN_SRC R :results graphics :file index1.jpg
+  indexRef <- read.csv("../index-sequences.csv", as.is = TRUE) 
+  index1 <- read.table("index1.txt", as.is = TRUE)
+  colnames(index1) <- c("forward", "reverse", "count")
+  index1m <- merge(indexRef, index1, by.x = "reverse",
+                   by.y = "forward", all.y = TRUE)
+  index1m <- index1m[order(index1m$count, decreasing = TRUE), ]
+  index1m <- index1m[, c("name", "reverse", "forward", "count")]
+  plot(index1[, 3], type = 'b', main = "Index 1 Reads")
+  abline(v = 24)
+#+END_SRC
+
+#+ATTR_LATEX: :width 0.5\textwidth
+#+CAPTION: Sorted Abundance of Index 1 Sequences
+#+RESULTS:
+[[file:index1.jpg]]
+
+#+BEGIN_SRC R 
+  index1m[1:30,]
+#+END_SRC
+
+#+CAPTION: Top 30 Index 1 Sequences
+#+RESULTS:
+| SB712 | CGTAGCGA | TCGCTACG | 447223 |
+| SA702 | GACATAGT | ACTATGTC | 402241 |
+| SA712 | TATAGCGA | TCGCTATA | 388429 |
+| SA704 | ACTCACTG | CAGTGAGT | 386529 |
+| SB702 | CGAAGTAT | ATACTTCG | 382835 |
+| SA711 | GTCTATGA | TCATAGAC | 373605 |
+| SB701 | CTCGACTT | AAGTCGAG | 366795 |
+| SB703 | TAGCAGCT | AGCTGCTA | 351210 |
+| SA710 | GTCTGCTA | TAGCAGAC | 344053 |
+| SB704 | TCTCTATG | CATAGAGA | 342769 |
+| SB710 | TGCTCGTA | TACGAGCA | 339619 |
+| SB709 | GCGTATAC | GTATACGC | 338031 |
+| SA701 | CGAGAGTT | AACTCTCG | 333956 |
+| SA709 | ACTACGAC | GTCGTAGT | 330358 |
+| SA707 | TAGTCTCC | GGAGACTA | 319099 |
+| SB711 | AACGCTGA | TCAGCGTT | 315670 |
+| SB708 | ATAGTACC | GGTACTAT | 311457 |
+| SA705 | TGAGTACG | CGTACTCA | 300224 |
+| SB707 | ACGTGCGC | GCGCACGT | 292166 |
+| SA703 | ACGCTACT | AGTAGCGT | 288864 |
+| SA708 | CGAGCGAC | GTCGCTCG | 281528 |
+| SB706 | GTAACGAG | CTCGTTAC | 278597 |
+| SB705 | GATCTACG | CGTAGATC | 241194 |
+| SA706 | CTGCGTAG | CTACGCAG | 238835 |
+| nil   | AAAAAAAA | nil      |  49261 |
+| nil   | CAAAAAAA | nil      |  10832 |
+| nil   | AAAAATAA | nil      |  10689 |
+| nil   | GAAAAAAA | nil      |  10044 |
+| nil   | AAAAAAAT | nil      |  10010 |
+| nil   | AAAACAAA | nil      |   9891 |
+
+#+BEGIN_SRC R :results graphics :file index2.jpg
+  index2 <- read.table("index2.txt", as.is = TRUE)
+  colnames(index2) <- c("forward", "reverse", "count")
+  index2m <- merge(indexRef, index2, by.x = "reverse",
+                   by.y = "reverse", all.y = TRUE)
+  index2m <- index2m[order(index2m$count, decreasing = TRUE), ]
+  index2m <- index2m[, c("name", "reverse", "forward.y", "count")]
+
+  plot(index2[, 3], type = 'b', main = "Index 2 Reads")
+  abline(v = 16)
+#+END_SRC
+
+#+ATTR_LATEX: :width 0.5\textwidth
+#+CAPTION: Sorted Abundance of Index 2 Sequences
+#+RESULTS:
+[[file:index2.jpg]]
+
+#+BEGIN_SRC R 
+  index2m[1:20,]
+#+END_SRC
+
+#+CAPTION: Top 20 Index 2 Sequences
+#+RESULTS:
+| nil   | GGGAAAGA | TCTTTCCC | 3794087 |
+| SA508 | ACGGTGTC | GACACCGT |  581173 |
+| SA501 | CGTACGAT | ATCGTACG |  548986 |
+| SA503 | ACTCGCTA | TAGCGAGT |  532169 |
+| SA505 | CTCGATGA | TCATCGAG |  514323 |
+| SA507 | AGATATCC | GGATATCT |  508306 |
+| SB504 | GTCTCGTA | TACGAGAC |  499431 |
+| SA502 | CAGATAGT | ACTATCTG |  495756 |
+| SB501 | TATAGTAG | CTACTATA |  492230 |
+| SB508 | TATCTGAC | GTCAGATA |  467649 |
+| SB502 | TAGTAACG | CGTTACTA |  451047 |
+| SB506 | CTCGTCGA | TCGACGAG |  449971 |
+| SA504 | ACACGCAG | CTGCGTGT |  434978 |
+| SB503 | GTGACTCT | AGAGTCAC |  429596 |
+| SB507 | ACACGATC | GATCGTGT |  415653 |
+| SB505 | CGAGACGT | ACGTCTCG |  414536 |
+| SA506 | CACTCACG | CGTGAGTG |  382258 |
+| nil   | CACTCACC | GGTGAGTG |   22796 |
+| nil   | AAACGCAG | CTGCGTTT |    5610 |
+| nil   | AAGATAGT | ACTATCTT |    5299 |
+
+Note that PhiX has an index sequence for Read 2, but not for Read 1. Consequently, the most abundant sequence for Read 2 Indexes is the PhiX index, not one of our indices!
+
+** Mystery Index
+Now we need to figure out what the foreign index is doing at the top of the list for Index 2, ~TCTTTCCC~. 
+
+#+BEGIN_SRC bash
+  INDEX=TCTTTCCC
+  # mkdir ~/miseq/${RUN}/undet
+  # cp ~/miseq/${RUN}/Data/Intensities/BaseCalls/Undetermined* ~/miseq/${RUN}/undet
+  cd ~/miseq/${RUN}/undet
+  # gunzip Undetermined_S0_L001_I2_001.fastq.gz
+  grep -c $INDEX Undetermined_S0_L001_I2_001.fastq
+#+END_SRC
+
+#+RESULTS:
+|         |
+| 3794087 |
+
+This matches the number of hits reported in [[file:Data/Intensities/BaseCalls/Alignment/DemultiplexSummaryF1L1.txt][DemultiplexSummaryF1L1.txt]], so we've grabbed the right sequences. Pull them all out and extract the coordinates:
+
+#+BEGIN_SRC bash :results silent
+grep -B 1 -A 2 TCTTTCCC Undetermined_S0_L001_I2_001.fastq > mysteryIndex2.fastq
+grep '@M01696' mysteryIndex2.fastq > mysteryClusters
+#+END_SRC
+
+~mysteryClusters~ now contains the headers for all the clusters with the mystery Index2. Next we check to see what the Index1 value is for each of these:
+
+#+BEGIN_SRC bash :results silent
+  gunzip Undetermined_S0_L001_II_001.fastq.gz
+  cut -d' ' -f1 mysteryClusters > clusterList
+  split -l 100 clusterList cList
+  for i in $(ls cList*); do
+      grep -A 3 -f $i Undetermined_S0_L001_I1_001.fastq > ${i}.match &
+  done
+
+
+  cat *match > index1Matches
+  grep -v '^--$' index1Matches > index1Matches1
+  mv index1Matches1 index1Matches
+  awk 'NR == 2 || NR % 4 == 2' index1Matches > index1
+  sort index1 | uniq -c | sort -h > index1.tab
+#+END_SRC
+
+#+BEGIN_SRC R
+  mystery1 <- read.table("undet/index1.tab", as.is = TRUE)
+  colnames(mystery1) <- c("counts", "sequence")
+  mystery1m <- merge(indexRef, mystery1, by.x = "reverse",
+                   by.y = "sequence", all.y = TRUE)
+
+  goodMatches <- mystery1m[which(! is.na(mystery1m$name)), ]
+  goodMatches <- goodMatches[order(goodMatches$counts, decreasing = TRUE), ]
+
+  sum(goodMatches$counts)
+  sum(mystery1m$counts)
+#+END_SRC
+* Trimming Ends
+
+[[http://www.usadellab.org/cms/?page=trimmomatic][Trimmomatic]] will trim low-quality bases off the front and back of a read, and do some other trimming to increase the overall quality of the raw reads. Not sure how useful it is as of yet, so storing the results in a separate ~trimmed~ directory to compare to untrimmed data.
+ 
+#+BEGIN_SRC bash :results verbatim
+  ## create trimmed directory
+  if [ ! -d $OUT/trimmed ]
+  then
+      echo creating trimmed directory
+      mkdir $OUT/trimmed
+  fi
+
+  rm $OUT/trimmed/*
+
+  echo
+  echo Starting trimming at:
+  date
+  for file in `cat $OUT/samples.txt`
+  do 
+      if [ -s ./$RAW/$file$RF ] ## data exists
+      then
+        echo $file >> $OUT/trimmed/trim.success
+        TrimmomaticPE -phred33 $RAW/$file$RF $RAW/$file$RR \
+        $OUT/trimmed/${file}.FP $OUT/trimmed/${file}.FU \
+        $OUT/trimmed/${file}.RP $OUT/trimmed/${file}.RU \
+        LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 \
+        2>> $OUT/trimmed/trim.log
+      else ## no data
+          echo "$file" >> $OUT/trimmed/trim.fails
+      fi
+  done
+
+  echo
+  echo Ending trimming at:
+  date
+
+  echo -en "\007" ## Beep when finished!
+#+END_SRC
+
+#+RESULTS:
+: 
+: 
+: Starting trimming at:
+: Tue Jan 16 11:12:04 EST 2018
+: 
+: Ending trimming at:
+: Tue Jan 16 11:16:43 EST 2018
+
+[[file:ANALYSIS/trimmed/trim.log][Trim Log]]
+
+#+BEGIN_SRC bash :results silent
+  IN=$OUT/trimmed/trim.log
+
+  grep 'Input Read Pairs' $IN | \
+      sed -e 's/Input Read Pairs: //g' \
+      -e 's/ Both Surviving: /,/g' \
+      -e 's/ (.*Forward Only Surviving: /,/g' \
+      -e 's/ (.*Reverse Only Surviving: /,/g' \
+      -e 's/ (.*Dropped: /,/g' \
+      -e 's/ (.*//g' > trim.csv
+#+END_SRC
+
+#+BEGIN_SRC R :file trimBoth.png :results graphics 
+  trim <- read.csv("trim.csv", header = FALSE)
+  colnames(trim) <- c("reads", "both", "forward", "reverse", "dropped")
+  trimT <- trim[-which.max(trim[,1]), ]
+  trimT <- t(trimT)
+  trimT <- trimT[, order(trimT["reads", ], decreasing = TRUE)]
+  trimT <- trimT[-1, ]
+  barplot(trimT, col = c("darkgreen", "blue", "yellow", "red"),
+          border = c("darkgreen", "blue", "yellow", "red"),
+          xlab = NULL, legend.text = c("passed", "forward", "reverse", "failed"))
+#+END_SRC
+
+#+CAPTION: Trimming Results
+#+RESULTS:
+[[file:trimBoth.png]]
+
+src_R{round(mean(trim$both/trim$reads), 2)} {{{results(=0.99=)}}}% of all reads passed the trimming step.
+
+* Joining Ends
+** --fastq_mergepairs, trimmed data
+
+#+BEGIN_SRC bash :results output raw
+  echo
+  echo Starting merge at:
+  date
+
+  if [ ! -d $OUT/joined ]
+  then
+      echo creating joined directory
+      mkdir $OUT/joined
+  fi
+
+  rm $OUT/joined/tr.join.summary
+  rm $OUT/joined/*trj*
+
+  for file in $OUT/trimmed/*FP
+  do
+      file=${file##*/}
+      file=${file%*.FP}
+      echo $file >> $OUT/joined/tr.join.summary
+      vsearch --fastq_mergepairs $OUT/trimmed/${file}.FP \
+                  --reverse $OUT/trimmed/${file}.RP \
+                  --fastqout $OUT/joined/$file.trj.fq \
+                  --fastqout_notmerged_fwd $OUT/joined/$file.trj.un1.fq 2>> $OUT/joined/tr.join.summary
+      cat $OUT/joined/$file.trj.fq $OUT/joined/$file.trj.un1.fq \
+          > $OUT/joined/$file.trj.all.fq
+
+      echo >> $OUT/joined/tr.join.summary
+  done
+
+  echo
+  echo Ending merge at:
+  date
+#+END_SRC
+
+#+RESULTS:
+
+Starting merge at:
+Tue Jan 16 16:24:11 EST 2018
+
+Ending merge at:
+Tue Jan 16 16:28:39 EST 2018
+
+Starting merge at:
+Tue Jan 16 13:50:29 EST 2018
+creating joined directory
+rm: cannot remove ‘ANALYSIS/joined/tr.join.summary’: No such file or directory
+
+Ending merge at:
+Tue Jan 16 13:53:26 EST 2018
+
+[[file:ANALYSIS/joined/tr.join.summary][Join Summary, Trimmed Reads]]
+
+#+BEGIN_SRC bash :results silent
+grep Pairs $OUT/joined/tr.join.summary | sed 's/^ *//' | cut -d' ' -f1 > pairs.tmp
+grep Merged $OUT/joined/tr.join.summary | sed 's/^ *//' | cut -d' ' -f1 > merged.tmp
+paste pairs.tmp merged.tmp > tr.join.tsv
+rm pairs.tmp merged.tmp
+#+END_SRC
+
+** --fastq_mergepairs script
+#+BEGIN_SRC bash :results output raw
+  ## create joined directory
+  if [ ! -d $OUT/joined ]
+  then
+      echo creating joined directory
+      mkdir $OUT/joined
+  fi
+
+  rm -f $OUT/joined/join.{fails,success,summary}
+
+  echo
+  echo Starting mergepairs at:
+  date
+  for file in `cat $OUT/samples.txt`
+  do 
+      echo $file >> $OUT/joined/join.summary
+      echo $file >> $OUT/joined/join.success
+      if [ -s $RAW/$file$RF ] ## data exists
+      then
+          vsearch --fastq_mergepairs $RAW/$file$RF \
+                  --reverse $RAW/$file$RR \
+                  --fastq_maxdiffs 10\
+                  --fastqout $OUT/joined/$file.joined.fq \
+                  --fastqout_notmerged_fwd $OUT/joined/$file.un1.fq 2>> $OUT/joined/join.summary
+                  ##--quiet 2> /dev/null  # discard messages
+          cat $OUT/joined/$file.joined.fq $OUT/joined/$file.un1.fq \
+            > $OUT/joined/$file.j1.fq
+      else ## no data
+          echo "$file" >> $OUT/joined/join.fails
+      fi
+  done
+
+  wait
+
+  echo
+  echo Ending mergepairs at:
+  date
+
+#+END_SRC
+
+#+RESULTS:
+
+
+Starting mergepairs at:
+Tue Jan 16 14:03:00 EST 2018
+
+Ending mergepairs at:
+Tue Jan 16 14:09:09 EST 2018
+
+[[file:ANALYSIS/joined/join.summary][Join Summary, Untrimmed Reads]]
+
+#+BEGIN_SRC bash :results silent
+grep Pairs $OUT/joined/join.summary | sed 's/^ *//' | cut -d' ' -f1 > pairs.tmp
+grep Merged $OUT/joined/join.summary | sed 's/^ *//' | cut -d' ' -f1 > merged.tmp
+paste pairs.tmp merged.tmp > join.tsv
+rm pairs.tmp merged.tmp
+#+END_SRC
+
+#+BEGIN_SRC R :file join.png :results output graphics 
+  join <- read.table("join.tsv", header = FALSE)
+  trJoin <- read.table("tr.join.tsv", header = FALSE)
+  joinT <- join[-which.max(join[,1]), ]
+  trJoinT <- trJoin[-which.max(trJoin[,1]), ]
+  xLim <- c(0, max(c(trJoinT[,1], joinT[,1])))
+  yLim <- c(0, max(c(trJoinT[,2], joinT[,2])))
+
+  plot(joinT, xlim = xLim, ylim = yLim, xlab = "Paired Reads",
+       "Total Reads")
+  points(trJoinT, pch = 2, col = 2)
+  abline(a = 0, b = 1)
+  abline(a = 0, b = 0.9, lty = 2, col = "grey")
+  abline(a = 0, b = 0.8, lty = 2, col = "grey")
+  abline(a = 0, b = 0.7, lty = 2, col = "grey")
+  abline(a = 0, b = 0.6, lty = 2, col = "grey")
+  abline(a = 0, b = 0.5, lty = 2, col = "grey")
+  legend(legend = c("Trimmed", "Untrimmed"), pch = 2:1, x = "topleft",
+         col = 2:1)
+#+END_SRC
+
+#+ATTR_LATEX: :width 0.5\textwidth
+#+CAPTION: Join Success vs Raw Reads
+#+RESULTS:
+[[file:join.png]]
+
+After running this script, the joined directory will contain files with the suffix ~$file.j1.fq~ that contain all the merged reads, and also the forward reads that were not merged. It's in fastq format, so we can filter the results further if we like.
+
+* Dereplication
+** --derep_fulllength script
+#+BEGIN_SRC bash :results verbatim
+  if [ ! -d $OUT/derep ]
+  then
+      echo creating derep directory
+      mkdir $OUT/derep
+  fi
+
+  echo
+  echo Starting dereplication:
+  date
+  for file in `ls $OUT/joined/*trj.all.fq | xargs -l1 basename -s .trj.all.fq`
+  do 
+      ## some sample names have hyphens, need to replace these with
+      ## underscores; hence the relabel pattern replacement
+
+      vsearch --derep_fulllength $OUT/joined/$file.trj.all.fq \
+            --uc $OUT/derep/$file.tr.uc --sizeout --quiet\
+            --output $OUT/derep/$file.tr.dr.fq \
+            --relabel sample=${file//-/_}XXX \
+            --minuniquesize 2
+  done
+
+  echo
+  echo Finished dereplication:
+  date
+
+  ## Aggregate the output into a single fasta file
+  cat $OUT/derep/*.dr.fq > $OUT/derep/derep.tr.fasta
+  ## strip off the counters added to each read name:
+  sed 's/XXX[^;]*;/;/g' $OUT/derep/derep.tr.fasta > $OUT/derep/derepSamp.tr.fasta
+  echo
+  ls -lh --color=never $OUT/derep/derep*.fasta
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+
+
+Starting dereplication:
+Tue Jan 16 16:37:43 EST 2018
+
+Finished dereplication:
+Tue Jan 16 16:39:00 EST 2018
+
+-rw-rw-r-- 1 smithty lab 278M Jan 16 16:39 ANALYSIS/derep/derepSamp.tr.fasta
+-rw-rw-r-- 1 smithty lab 284M Jan 16 16:39 ANALYSIS/derep/derep.tr.fasta
+#+end_example
+* Matching reads to the reference
+** --usearch_global script
+
+*** Searching by read
+#+BEGIN_SRC bash :results verbatim
+  if [ ! -d $OUT/search ]
+  then
+      echo creating search directory
+      mkdir $OUT/search
+  fi
+
+  echo
+  echo Starting global search:
+  date
+  db=/home/smithty/data/illumina/vp_all.fasta
+
+  vsearch --usearch_global $OUT/derep/derep.fasta --db $db \
+              --uc $OUT/search/derep.uc \
+              --biomout $OUT/search/derep.biom \
+              --notmatched $OUT/search/derep.unmatched \
+              --maxaccepts 100 \
+              --id 0.98 --quiet 2>/dev/null
+
+  echo
+  echo Ending global search:
+  date
+
+  echo
+  ls -lh --color=never $OUT/search/derep.{biom,uc,unmatched}
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+
+> > > $ $
+Starting global search:
+Fri Aug 11 15:25:43 EDT 2017
+$ $ > > > > > $ $
+Ending global search:
+Fri Aug 11 15:26:35 EDT 2017
+$
+-rwxrwxrwx 1 root root 2.5M Aug 11 15:26 vs170804/search/derep.biom
+-rwxrwxrwx 1 root root  11M Aug 11 15:26 vs170804/search/derep.uc
+-rwxrwxrwx 1 root root 9.4M Aug 11 15:26 vs170804/search/derep.unmatched
+#+end_example
+
+*** Searching by Sample
+#+BEGIN_SRC bash :results verbatim
+  if [ ! -d $OUT/search ]
+  then
+      echo creating joined directory
+      mkdir $OUT/search
+  fi
+
+  echo
+  echo Starting global search:
+  date
+  db=/home/smithty/data/illumina/vp_all.fasta
+
+  vsearch --usearch_global $OUT/derep/derepSamp.fasta --db $db \
+              --uc $OUT/search/derepS.uc \
+              --biomout $OUT/search/derepS.biom \
+              --notmatched $OUT/search/derepS.unmatched \
+              --maxaccepts 100 \
+              --id 0.98 --quiet 2>/dev/null
+
+  echo
+  echo Ending global search:
+  date
+
+  echo
+  ls -lh --color=never $OUT/search/derepS.{biom,uc,unmatched}
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+
+> > > $ $
+Starting global search:
+Fri Aug 11 15:27:43 EDT 2017
+$ $ > > > > > $ $
+Ending global search:
+Fri Aug 11 15:28:35 EDT 2017
+$
+-rwxrwxrwx 1 root root 241K Aug 11 15:28 vs170804/search/derepS.biom
+-rwxrwxrwx 1 root root 9.8M Aug 11 15:28 vs170804/search/derepS.uc
+-rwxrwxrwx 1 root root 9.3M Aug 11 15:28 vs170804/search/derepS.unmatched
+#+end_example
+
