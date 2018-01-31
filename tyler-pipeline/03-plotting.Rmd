@@ -78,6 +78,11 @@ need to be more explicit with our instructions:
 plot(x = iris$Sepal.Length, y = iris$Sepal.Width)
 ```
 
+```{r ggplotting vectors}
+library(ggplot2)
+ggplot(data = iris, aes(x = Sepal.Length, y = Sepal.Width)) + geom_point()
+```
+
 Here we've specified which variable is goes on each axis. If we leave that out,
 R will assume the first variable is `x` and the second is `y`.
 
@@ -143,6 +148,14 @@ over. Again, it doesn't add any value to the plot.
 plot(Sepal.Width ~ Sepal.Length, data = iris, pch = as.numeric(Species))
 ```
 
+```{r ggplot pch}
+ggplot(data = iris,
+       aes(x = Sepal.Length, y = Sepal.Width, color = Species,
+           shape = Species, size = Petal.Length)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(aes(intercept = 0, slope = 1))
+```
+
 Now the symbols mean somthing useful! Note that this uses the first three
 symbols that R knows. If we don't like these, we can do a little selection trick
 to pick our own:
@@ -184,38 +197,95 @@ If you know html colour codes, you can use them directly. For the rest of us,
 ```{r scatterplot colors}
 plot(Sepal.Width ~ Sepal.Length, data = iris,
      pch = c(19, 17, 15)[as.numeric(Species)],
-     col = adjustcolor(c("red", "blue", "orange")[as.numeric(Species)], alpha.f = 0.3))
+     col = adjustcolor(c("red", "blue", "orange")[as.numeric(Species)],
+                       alpha.f = 0.3))
+```
+ 
+The third way to modify points is to change their sizes. This is controlled by
+the `cex` argument. By default, it is set to `1`. This is a multiplication
+factor: values less than 1 will reduce points, and values greater than 1 will
+increase them.
+
+> ## Challenge
+>
+> How can we use the size of points in our plot to convey something interesting
+> about our data? Try to add some more information to our previous plot using
+> the `cex` argument.
+
+```{r cex}
+plot(Sepal.Width ~ Sepal.Length, data = iris,
+     pch = 19,
+     col = adjustcolor(c("red", "blue", "orange")[as.numeric(Species)],
+                       alpha.f = 0.3),
+     cex = Petal.Length)
+```
+
+This data set works pretty well. However, if your data includes values over 10
+or so, the values will produce points that are too big to plot usefully. With a
+bit of code we can tweak the size however we like. Dividing by the maximum value
+will translate the range to 0-1. We can then multiply the result by a single
+number to set the maximum point size.
+
+> ## Warning
+>
+> If the variable you use to set cex includes 0 values, those points will be
+> invisible! You can fix this by adding a small value to the scaled data. i.e.,
+> cex = (0.5 + values/max(values)) * 5.
+
+```{r cex}
+plot(Sepal.Width ~ Sepal.Length, data = iris,
+     pch = 19, # it's hard to compare the size of different symbols
+     col = adjustcolor(c("red", "blue", "orange")[as.numeric(Species)],
+                       alpha.f = 0.3),
+     cex = Petal.Length/max(Petal.Length) * 100)
 ```
 
 ## Real Data
 
-```{r read otus}
-samp1 <- read.table("Sample1.otu", sep = "\t", row.names = 1)
-otus <- samp1[, ncol(samp1)]
+Real data doesn't come nicely formatted. It typically requires some processing
+to get it into a consistent state that R will be able to deal with.
 
-samples <- t(samp1[, - ncol(samp1)])
+```{r reading real data}
+library(dplyr)
+its1 <- read.csv("its1.tab", stringsAsFactors = FALSE)
+head(its1) ## Oops, tabs!
 
-taxTab <- strsplit(as.character(otus), split = ";  ")
-taxTab <- do.call(rbind, taxTab)
-taxTab <- gsub("^.__", "", taxTab)
-colnames(taxTab) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+its1 <- read.delim("its1.tab", stringsAsFactors = FALSE)
+head(its1) # better, but ID isn't data!
 
-```
+its1 <- read.delim("its1.tab", stringsAsFactors = FALSE,
+                   row.names = 1)
 
-```{r RAM Data}
-library(RAM)
-data(ITS1)
-ITS1otus <- ITS1[, ncol(ITS1)]
-ITS1samples <- t(ITS1[, - ncol(ITS1)])
-ITS1taxTab <- strsplit(as.character(ITS1otus), split = "; ")
-ITS1taxTab <- rbind.fill(lapply(ITS1taxTab, as.data.frame))
-ITS1taxTab <- do.call(function(x) rbind.fill(as.data.frame(x)), ITS1taxTab)
-ITS1taxTab <- gsub("^.__", "", ITS1taxTab)
-colnames(ITS1taxTab) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
-
-
+meta <- read.csv("metadata.csv", row.names = 1) # strings as factors for this!
+meta$Year <- factor(meta$Year, ordered = TRUE)
 
 ```
+
+```{r cleaning our data}
+otus <- select(its1, taxonomy) # collect the taxonomy column
+samples <- select(its1, -taxonomy) # remove the taxonomy column
+samples <- t(samples) # convert taxa x observations to observations x taxa
+
+otus$taxonomy <- gsub(".__", "", otus$taxonomy) # gsub works on vectors
+
+library(tidyr) # for the separate function
+otus <- separate(otus, taxonomy, sep = "; ",
+                 into = c("kingdom", "phylum", "class", "order",
+                          "family", "genus", "species"))
+```
+
+```{r ordination}
+library(vegan)
+samples.nmds <- metaMDS(samples)
+nmds.pts <- scores(samples.nmds)
+
+plot(nmds.pts, col = adjustcolor(as.numeric(meta$Year), alpha.f = 0.5),
+     pch = c(19, 17, 15)[as.numeric(meta$Plots)],
+     cex = (8 * meta$DON / max(meta$DON)) + 1)
+
+ef <- envfit(samples.nmds, meta, permu = 999, na.rm = TRUE)
+```
+
 
 ## type :: what kind of symbols do you want to plot?
 
