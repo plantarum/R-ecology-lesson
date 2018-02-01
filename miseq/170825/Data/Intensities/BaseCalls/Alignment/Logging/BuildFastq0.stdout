@@ -1,0 +1,80 @@
+BuildFASTQ invoked for lane 1 read R1
+Loading samples from arguments samples
+Building FASTQ file(s) for lane 1, read R1
+GenerateFASTQ L001T1101R1
+N-masked 3 reads
+GenerateFASTQ L001T1102R1
+N-masked 0 reads
+GenerateFASTQ L001T1103R1
+N-masked 0 reads
+GenerateFASTQ L001T1104R1
+N-masked 0 reads
+GenerateFASTQ L001T1105R1
+N-masked 1 reads
+GenerateFASTQ L001T1106R1
+N-masked 0 reads
+GenerateFASTQ L001T1107R1
+N-masked 0 reads
+GenerateFASTQ L001T1108R1
+N-masked 0 reads
+GenerateFASTQ L001T1109R1
+N-masked 0 reads
+GenerateFASTQ L001T1110R1
+N-masked 0 reads
+GenerateFASTQ L001T1111R1
+N-masked 0 reads
+GenerateFASTQ L001T1112R1
+N-masked 1 reads
+GenerateFASTQ L001T1113R1
+N-masked 1 reads
+GenerateFASTQ L001T1114R1
+N-masked 0 reads
+GenerateFASTQ L001T1115R1
+N-masked 0 reads
+GenerateFASTQ L001T1116R1
+N-masked 0 reads
+GenerateFASTQ L001T1117R1
+N-masked 2 reads
+GenerateFASTQ L001T1118R1
+N-masked 42 reads
+GenerateFASTQ L001T1119R1
+N-masked 2 reads
+GenerateFASTQ L001T2101R1
+N-masked 8 reads
+GenerateFASTQ L001T2102R1
+N-masked 10 reads
+GenerateFASTQ L001T2103R1
+N-masked 11 reads
+GenerateFASTQ L001T2104R1
+N-masked 17 reads
+GenerateFASTQ L001T2105R1
+N-masked 10 reads
+GenerateFASTQ L001T2106R1
+N-masked 12 reads
+GenerateFASTQ L001T2107R1
+N-masked 15 reads
+GenerateFASTQ L001T2108R1
+N-masked 37 reads
+GenerateFASTQ L001T2109R1
+N-masked 27 reads
+GenerateFASTQ L001T2110R1
+N-masked 19 reads
+GenerateFASTQ L001T2111R1
+N-masked 20 reads
+GenerateFASTQ L001T2112R1
+N-masked 20 reads
+GenerateFASTQ L001T2113R1
+N-masked 6 reads
+GenerateFASTQ L001T2114R1
+N-masked 17 reads
+GenerateFASTQ L001T2115R1
+N-masked 17 reads
+GenerateFASTQ L001T2116R1
+N-masked 34 reads
+GenerateFASTQ L001T2117R1
+N-masked 27 reads
+GenerateFASTQ L001T2118R1
+N-masked 31 reads
+GenerateFASTQ L001T2119R1
+N-masked 26 reads
+BuildFASTQ complete

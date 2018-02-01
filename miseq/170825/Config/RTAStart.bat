@@ -1,0 +1,3 @@
+title RTA 1.18.54 - D:\Illumina\MiSeqTemp\170825_M01696_0103_000000000-B3MBD
+pushd "C:\Illumina\RTA"
+"C:\Illumina\RTA\RTA.exe"  "D:\Illumina\MiSeqTemp\170825_M01696_0103_000000000-B3MBD\Images " "D:\Illumina\MiSeqOutput " Read=All ControlLane=0 Threads=2 CopyIntensityFilesToNetwork=0 instrumentType=miseq templatecycles=7 subregionachannelsettings=213,0,0 subregioncchannelsettings=213,0,0 subregionwidthheight=2944,2440 qualityscoretype=v8

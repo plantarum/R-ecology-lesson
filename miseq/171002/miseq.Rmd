@@ -1,0 +1,192 @@
+# Setup
+
+This file should be in the top-level directory of the MiSeq output, and we set
+that location as the working directory for R.
+
+```{r setup}
+library(tidyverse)
+getwd()
+```
+
+# Reference
+Refer to the [MiSeq Metagenomics Workflow Reference
+(pdf)](https://support.illumina.com/content/dam/illumina-support/documents/documentation/software_documentation/miseqreporter/miseq-reporter-metagenomics-workflow-reference-guide-15042317-d.pdf)
+for details.
+
+# Quality Checks
+## Raw Reads
+
+The results of sample demultiplexing are stored in the
+`DemultiplexSummaryF1L1.txt`
+(Data/Intensities/BaseCalls/Alignment/DemultiplexSummaryF1L1.txt) file. This
+contains three tables, smooshed together in a way that makes them awkward to
+use. We need to read this into R. We can't use `read_delim` or `read_csv`, so we
+have to scoop the whole file in with `readLines` and do some processing. 
+
+```{r demultiplexsummary}
+DEMULT <- "Data/Intensities/BaseCalls/Alignment/DemultiplexSummaryF1L1.txt"
+rawDM <- readLines(DEMULT)
+```
+
+`readLines` reads an entire file, and creates a new character string for each line, all of which are combined into a vector. The first table we want to use starts on the second line, and is separated from the next table by a blank line. We can use the `grep` command to find the blank line: 
+
+```{r grep}
+blank_line <- grep("^$", rawDM)
+```
+
+Now that we know which element in the vector is blank, we need a way to select all the elements from the second up to the one **before** the blank. 
+
+```{r picking lines}
+raw1 <- ???
+
+```
+
+With our lines picked out, we can now "read" the file into an R table. We can't use the `read_csv` function to process strings like this, we have to use the built-in `read.table`:
+
+```{r read.table from text}
+reads <- read.table(sep = "\t", text = raw1, header = TRUE)
+```
+
+The table is oddly formatted, so we need to do some cleaning. Take a few minutes to do the following:
+
+1. Drop the empty column (`select`)
+2. Rename `SampleName` to `tile` (`rename`)
+3. Convert the data.frame into a tibble (`as.tibble`)
+4. Gather up the sample columns under the `key` "sample", using the value `proportion`.
+
+```{r cleaning the table}
+reads_gathered <- ???
+```
+
+Now we can plot our data. Create a boxplot for the proportion of reads for each sample
+
+```{r demultiplex plot}
+ggplot(reads_gathered, ???)
+```
+
+The plot is dominated by one sample, "None". Make two new plots:
+
+1. One with only sample "None". Try `geom_histogram` and `geom_boxplot`: which is more helpful?
+2. A second plot with all the samples *except* "None"
+
+```{r PhiX Reads}
+ggplot(???)
+```
+
+```{r Sample Reads}
+samples <- ???
+ggplot(samples, ???
+  geom_boxplot()
+```
+
+Using boxplots for all the different samples produces a very busy plot, and it's a little tricky to interpret. At this point, we don't really care about each individual sample, we're looking for the overall pattern. That will be easier to see if we order the boxplots according to the proportion of the sample. The `reorder` function does this for us:
+
+```{r reording samples}
+samples <- filter(reads_gathered, sample != "None")
+ggplot(samples, aes(x = reorder(samples, proportion), proportion)) + geom_boxplot()
+```
+
+The second table contains the number of reads for each individual index
+sequence. It starts after the line "Index", and ends before the line
+"Index2". We'll pick it out the same way as before:
+
+```{r Table 2}
+index1_row <- grep("^Index$", rawDM)
+index2_row <- grep("^Index2$", rawDM)
+raw2 <- rawDM[(index1_row + 1):(index2_row - 1)]
+index1 <- read.table(text = raw2, sep = "\t", as.is = TRUE)
+colnames(index1) <- c("forward", "reverse", "count")
+index1 <- as.tibble(index1)
+```
+
+There's another file that's useful here. It's called "SampleSheet.csv", and
+contains a list of all the indexes we used in our library prep. Once again, it's
+in a non-standard format, so we have to do some munging:
+
+```{r samplesheet}
+sampleRaw <- readLines("SampleSheet.csv")
+sampleHeader <- grep("^Sample_ID,Sample_Name", sampleRaw)
+sampleRaw1 <- sampleRaw[sampleHeader:(length(sampleRaw))]
+sampleSheet <- read.table(text = sampleRaw1, sep = ",", header = TRUE, as.is = TRUE)
+sampleSheet <- as.tibble(sampleSheet)
+```
+
+Our tibble `index1` contains the forward and reverse index sequences (the i7 indexes), and their counts. `sampleSheet` contains the index sequences and their IDs. We want to create a new column in index1 that will contain the index label. We're going to do this in steps.
+
+First, `sampleSheet` has multipe rows for each i7 index; we need just one. We'll do this by selecting the columns we want, *I7_Index_ID* and *index*, grouping by those columns, and then summarizing:
+
+```{r extracting i7 index IDs}
+i7 <- sampleSheet %>% select(I7_Index_ID, index) %>%
+  group_by(I7_Index_ID, index) %>%
+  summarize()
+```
+
+Next, we'll convert this two-column tibble into a named vector (I'll explain why in a moment):
+
+```{r convert to named vector}
+i7ID <- i7$I7_Index_ID ## extract the ID value
+names(i7ID) <- i7$index ## name the ID values with the index sequence
+```
+
+We can use this named vector as a lookup table. Recall that we have the `index1` has the index sequences and their counts, but doesn't have their IDs. Take a look:
+
+```{r index sequences}
+index1$forward
+```
+
+What happens if we use this vector to select elements of `i7ID`:
+
+```{r i7ID lookup}
+i7ID[index1$forward]
+```
+
+That's just what we need to add index IDs to index 1:
+
+```{r add indexes}
+index1 <- mutate(index1, name = i7ID[forward])
+index1 <- mutate(index1, valid = ifelse(is.na(index1$name), "no", "yes"))
+```
+
+We also add a second variable, *valid*. We can use *valid* as a flag to distinguish between the indexes that we used in our library prep, and the sequencing errors that generate erroneous indexes.
+
+Now lets plot this data as a scatter plot:
+1. put `count` on the y axis
+2. put `forward` on the x axis
+3. reorder `forward` by `count`
+4. use `valid` to distinguish between good indexes and errors
+
+```{r plot index1}
+ggplot(index1, aes(x = reorder(forward, count), y = count, color = valid)) +
+  geom_point()
+```
+
+Finally, we can do the same for the i5 index, which is the third table in the DemultiplexSummary file.
+
+
+```{r index2}
+raw3 <- rawDM[(index2_row + 1):length(rawDM)]
+index2 <- read.table(text = raw3, sep = "\t", as.is = TRUE)
+colnames(index2) <- c("forward", "reverse", "count")
+index2 <- as.tibble(index2)
+
+i5 <- sampleSheet %>% select(I5_Index_ID, index2) %>%
+  group_by(I5_Index_ID, index2) %>%
+  summarize()
+
+i5ID <- i5$I5_Index_ID
+names(i5ID) <- i5$index2
+
+index2 <- mutate(index2, name = i5ID[forward])
+index2 <- mutate(index2, valid = ifelse(is.na(index2$name), "no", "yes"))
+
+ggplot(index2, aes(x = reorder(forward, count), y = count, color = valid)) +
+  geom_point()
+
+```
+
+# Moving On
+
+We now have (the start of) a useful script for checking the quality of our MiSeq runs. It's easy to share this, even with people who don't use R or know any programming. If you click the "Knit" button at the top of the window, RStudio will generate an html file that you can send to your collaborators. They can open it in a web browser, and see all of your plots.
+
+Another useful thing about this file is that it's pretty generic. Once you set the working directory in the first chunk, nothing else needs to change. Try it out! Copy this file into `miseq/170825`, open it up there, set the working directory, and click the `knit` button. It took us a while to build up this script to use the first time, but we can use it in another run with just a few clicks.
+
